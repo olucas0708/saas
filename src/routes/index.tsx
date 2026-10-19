@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { niches } from "@/lib/builder";
 import { Logo } from "@/components/Logo";
 
@@ -32,9 +32,9 @@ function Index() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-6">
+      <header className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-5 sm:px-6">
         <Logo />
-        <button onClick={() => start("branco")} className="rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background transition hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Criar site</button>
+        <nav className="flex items-center gap-2 sm:gap-3"><Link to="/prospecting" className="rounded-full border px-4 py-2.5 text-sm font-semibold transition hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Prospecção</Link><button onClick={() => start("branco")} className="rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background transition hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Criar site</button></nav>
       </header>
       <main>
         <section className="mx-auto max-w-5xl px-5 pb-16 pt-16 text-center sm:px-6 sm:pb-24 sm:pt-24">
