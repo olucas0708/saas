@@ -37,7 +37,7 @@ function Editor() {
       setSelected(b.id);
     } else {
       const [m] = blocks.splice(drag.index, 1);
-      blocks.splice(at > drag.index ? at - 1 : at, 0, m);
+      if (m) blocks.splice(at > drag.index ? at - 1 : at, 0, m);
     }
     setSite({ ...site, blocks });
     setDrag(null);

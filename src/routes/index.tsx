@@ -41,7 +41,7 @@ function Index() {
               <button key={t.id} onClick={() => start(t.id)} className="group overflow-hidden rounded-2xl border bg-card text-left transition hover:-translate-y-1 hover:shadow-xl">
                 <div className="h-48 overflow-hidden border-b bg-muted">
                   {site.blocks.length ? (
-                    <div className="pointer-events-none w-[400%] origin-top-left scale-25">
+                    <div className="pointer-events-none w-[400%] origin-top-left scale-[0.25]">
                       <SiteFrame theme={site.theme}>{site.blocks.map((b) => <BlockView key={b.id} block={b} />)}</SiteFrame>
                     </div>
                   ) : (

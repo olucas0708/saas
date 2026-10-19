@@ -3,7 +3,7 @@ export type BlockType = "hero" | "features" | "text" | "image" | "cta" | "footer
 export type Block = {
   id: string;
   type: BlockType;
-  props: Record<string, string>;
+  props: { [k: string]: string } & Partial<Record<"title"|"subtitle"|"button"|"body"|"url"|"caption"|"f1"|"f2"|"f3", string>>;
 };
 
 export type Site = { name: string; theme: "claro" | "escuro"; blocks: Block[] };
