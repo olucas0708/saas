@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 type LeadStatus = "Novo" | "Contatado" | "Interessado" | "Convertido" | "Descartado";
 type Lead = { id: string; business: string; niche: string; city: string; website: string; contact: string; notes: string; status: LeadStatus; createdAt: string };
@@ -43,7 +43,7 @@ function Prospecting() {
     return (filter === "Todos" || lead.status === filter) && (!query || text.includes(query.toLocaleLowerCase("pt-BR")));
   }), [leads, filter, query]);
 
-  const addLead = (event: React.FormEvent<HTMLFormElement>) => {
+  const addLead = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const business = form.business.trim();
     if (!business) return;
