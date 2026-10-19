@@ -61,7 +61,29 @@ function Prospecting() {
         try {
           const { data, error } = await supabase.from("prospecting_leads").select("*").order("created_at", { ascending: false });
           if (error) throw error;
-          if (active) setLeads((data ?? []).map((row) => ({
+          let cloudRows = data ?? [];
+          if (cloudRows.length === 0) {
+            const saved = localStorage.getItem(KEY);
+            const parsed: unknown = saved ? JSON.parse(saved) : [];
+            if (Array.isArray(parsed)) {
+              const legacy = parsed.filter((item): item is Lead =>
+                item && typeof item.business === "string" && item.business.trim().length > 0 &&
+                typeof item.id === "string" && statuses.includes(item.status),
+              );
+              if (legacy.length) {
+                const { data: imported, error: importError } = await supabase.from("prospecting_leads").insert(
+                  legacy.map(({ business, niche, city, website, contact, notes, status, createdAt }) => ({
+                    user_id: user.id, business, niche, city, website, contact, notes, status,
+                    ...(createdAt ? { created_at: createdAt } : {}),
+                  })),
+                ).select("*");
+                if (importError) throw importError;
+                cloudRows = imported ?? [];
+                if (active) setNotice(`Importamos ${cloudRows.length} lead(s) antigos para sua conta.`);
+              }
+            }
+          }
+          if (active) setLeads(cloudRows.map((row) => ({
             id: row.id, business: row.business, niche: row.niche, city: row.city,
             website: row.website, contact: row.contact, notes: row.notes,
             status: row.status as LeadStatus, createdAt: row.created_at,
