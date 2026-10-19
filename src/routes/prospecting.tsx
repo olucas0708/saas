@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 type LeadStatus = "Novo" | "Contatado" | "Interessado" | "Convertido" | "Descartado";
 type Lead = { id: string; business: string; niche: string; city: string; website: string; contact: string; notes: string; status: LeadStatus; createdAt: string };
@@ -20,37 +21,156 @@ function Prospecting() {
   const [filter, setFilter] = useState("Todos");
   const [form, setForm] = useState({ business: "", city: "", niche: "Barbearia", website: "", contact: "", notes: "" });
   const [notice, setNotice] = useState("");
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(KEY);
-      if (saved) {
-        const parsed: unknown = JSON.parse(saved);
-        if (Array.isArray(parsed)) setLeads(parsed.filter((item): item is Lead => item && typeof item.id === "string" && typeof item.business === "string" && statuses.includes(item.status)));
+    let active = true;
+    let subscription: { unsubscribe: () => void } | undefined;
+    const initializeAuth = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!active) return;
+        setUser(data.session?.user ? { id: data.session.user.id, email: data.session.user.email } : null);
+        const authListener = supabase.auth.onAuthStateChange((_event, session) => {
+          if (active) setUser(session?.user ? { id: session.user.id, email: session.user.email } : null);
+        });
+        subscription = authListener.data.subscription;
+      } catch {
+        if (active) setNotice("Supabase não está configurado neste ambiente. Os leads ficarão salvos apenas neste navegador.");
+      } finally {
+        if (active) setAuthReady(true);
       }
-    } catch { setNotice("Não foi possível carregar os leads salvos neste navegador."); }
-    setLoaded(true);
+    };
+    void initializeAuth();
+    return () => { active = false; subscription?.unsubscribe(); };
   }, []);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!authReady) return;
+    let active = true;
+    setLoaded(false);
+    const loadLeads = async () => {
+      if (user) {
+        setLeads([]);
+        try {
+          const { data, error } = await supabase.from("prospecting_leads").select("*").order("created_at", { ascending: false });
+          if (error) throw error;
+          if (active) setLeads((data ?? []).map((row) => ({
+            id: row.id, business: row.business, niche: row.niche, city: row.city,
+            website: row.website, contact: row.contact, notes: row.notes,
+            status: row.status as LeadStatus, createdAt: row.created_at,
+          })));
+        } catch {
+          if (active) setNotice("Não foi possível carregar os leads da nuvem. Confira se a migração do banco foi aplicada.");
+        }
+      } else {
+        try {
+          const saved = localStorage.getItem(KEY);
+          if (saved) {
+            const parsed: unknown = JSON.parse(saved);
+            if (Array.isArray(parsed)) setLeads(parsed.filter((item): item is Lead => item && typeof item.id === "string" && typeof item.business === "string" && statuses.includes(item.status)));
+            else setLeads([]);
+          } else setLeads([]);
+        } catch {
+          if (active) setNotice("Não foi possível carregar os leads salvos neste navegador.");
+          setLeads([]);
+        }
+      }
+      if (active) setLoaded(true);
+    };
+    void loadLeads();
+    return () => { active = false; };
+  }, [authReady, user?.id]);
+
+  useEffect(() => {
+    if (!authReady || !loaded || user) return;
     try { localStorage.setItem(KEY, JSON.stringify(leads)); }
     catch { setNotice("Não foi possível salvar. Exporte seus leads para não perder os dados."); }
-  }, [leads, loaded]);
+  }, [leads, loaded, authReady, user]);
 
   const filtered = useMemo(() => leads.filter((lead) => {
     const text = [lead.business, lead.city, lead.niche, lead.contact].join(" ").toLocaleLowerCase("pt-BR");
     return (filter === "Todos" || lead.status === filter) && (!query || text.includes(query.toLocaleLowerCase("pt-BR")));
   }), [leads, filter, query]);
 
-  const addLead = (event: FormEvent<HTMLFormElement>) => {
+  const addLead = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const business = form.business.trim();
     if (!business) return;
-    const lead: Lead = { ...form, business, city: form.city.trim(), website: form.website.trim(), contact: form.contact.trim(), notes: form.notes.trim(), id: crypto.randomUUID(), status: "Novo", createdAt: new Date().toISOString() };
-    setLeads((previous) => [lead, ...previous]);
+    const values = { business, city: form.city.trim(), niche: form.niche, website: form.website.trim(), contact: form.contact.trim(), notes: form.notes.trim() };
+    if (user) {
+      try {
+        const { data, error } = await supabase.from("prospecting_leads").insert({ ...values, user_id: user.id }).select("*").single();
+        if (error) throw error;
+        const saved: Lead = { id: data.id, ...values, status: data.status as LeadStatus, createdAt: data.created_at };
+        setLeads((previous) => [saved, ...previous]);
+        setNotice("Lead salvo com segurança na nuvem.");
+      } catch {
+        setNotice("Não foi possível salvar o lead na nuvem. Confira a conexão e as permissões do banco.");
+        return;
+      }
+    } else {
+      const lead: Lead = { ...values, id: crypto.randomUUID(), status: "Novo", createdAt: new Date().toISOString() };
+      setLeads((previous) => [lead, ...previous]);
+      setNotice("Lead salvo neste navegador. Entre na sua conta para sincronizar entre dispositivos.");
+    }
     setForm({ business: "", city: city.trim(), niche, website: "", contact: "", notes: "" });
-    setNotice("Lead adicionado à sua lista.");
+  };
+
+  const changeStatus = async (lead: Lead, status: LeadStatus) => {
+    if (user) {
+      const { error } = await supabase.from("prospecting_leads").update({ status }).eq("id", lead.id);
+      if (error) { setNotice("Não foi possível atualizar o status na nuvem."); return; }
+    }
+    setLeads((previous) => previous.map((item) => item.id === lead.id ? { ...item, status } : item));
+    setNotice(user ? "Status atualizado na nuvem." : "Status atualizado.");
+  };
+
+  const deleteLead = async (lead: Lead) => {
+    if (user) {
+      const { error } = await supabase.from("prospecting_leads").delete().eq("id", lead.id);
+      if (error) { setNotice("Não foi possível excluir o lead na nuvem."); return; }
+    }
+    setLeads((previous) => previous.filter((item) => item.id !== lead.id));
+    setNotice("Lead excluído.");
+  };
+
+  const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthBusy(true);
+    setNotice("");
+    try {
+      const email = authEmail.trim();
+      const result = authMode === "signup"
+        ? await supabase.auth.signUp({ email, password: authPassword })
+        : await supabase.auth.signInWithPassword({ email, password: authPassword });
+      if (result.error) throw result.error;
+      if (authMode === "signup" && !result.data.session) {
+        setNotice("Conta criada. Confira seu e-mail para confirmar o cadastro e depois entre.");
+      } else {
+        setNotice(authMode === "signup" ? "Conta criada e conectada." : "Login realizado.");
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Não foi possível autenticar. Verifique os dados e a configuração do Supabase.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setNotice("Você saiu da conta. Seus leads na nuvem continuam salvos.");
+    } catch {
+      setNotice("Não foi possível sair da conta.");
+    }
   };
 
   const searchMaps = () => {
@@ -75,12 +195,24 @@ function Prospecting() {
   return <div className="min-h-screen bg-muted/50 text-foreground">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-background px-5 py-4 sm:px-8">
       <div className="flex items-center gap-4"><Link to="/" className="font-display text-xl font-bold">nextage<span className="text-primary">.ai</span></Link><span className="hidden text-muted-foreground sm:inline">/ Prospecção</span></div>
-      <div className="flex flex-wrap gap-2"><Link to="/editor" className="rounded-full border px-4 py-2 text-sm font-semibold hover:bg-muted">Criar site</Link><button onClick={exportCsv} disabled={!filtered.length} className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40">Exportar CSV</button></div>
+      <div className="flex flex-wrap items-center gap-2">{user && <span className="hidden text-sm text-muted-foreground sm:inline">{user.email}</span>}{user && <button onClick={signOut} className="rounded-full border px-4 py-2 text-sm font-semibold hover:bg-muted">Sair</button>}<Link to="/editor" className="rounded-full border px-4 py-2 text-sm font-semibold hover:bg-muted">Criar site</Link><button onClick={exportCsv} disabled={!filtered.length} className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40">Exportar CSV</button></div>
     </header>
     <main className="mx-auto max-w-7xl space-y-7 px-4 py-7 sm:px-8 sm:py-10">
       <section className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
         <div><p className="text-sm font-semibold uppercase tracking-widest text-primary">Pipeline comercial</p><h1 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">Encontre sua próxima oportunidade.</h1><p className="mt-3 max-w-2xl text-muted-foreground">Pesquise negócios locais, registre oportunidades e acompanhe cada contato até a conversão.</p></div>
       </section>
+      {!user && authReady && <section className="rounded-2xl border bg-background p-5 sm:p-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div><h2 className="font-display text-xl font-bold">Sincronize seus leads</h2><p className="mt-1 max-w-xl text-sm text-muted-foreground">Crie uma conta ou entre para guardar seus contatos na nuvem e acessá-los em outros dispositivos. Sem login, os dados ficam apenas neste navegador.</p></div>
+          <div className="flex shrink-0 gap-2"><button type="button" onClick={() => setAuthMode("signin")} className={`rounded-full px-4 py-2 text-sm font-semibold ${authMode === "signin" ? "bg-primary text-primary-foreground" : "border hover:bg-muted"}`}>Entrar</button><button type="button" onClick={() => setAuthMode("signup")} className={`rounded-full px-4 py-2 text-sm font-semibold ${authMode === "signup" ? "bg-primary text-primary-foreground" : "border hover:bg-muted"}`}>Criar conta</button></div>
+        </div>
+        <form onSubmit={submitAuth} className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <input type="email" required autoComplete="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Seu e-mail" aria-label="E-mail para entrar" className="min-w-0 rounded-lg border bg-background px-3 py-2.5 text-sm" />
+          <input type="password" required minLength={6} autoComplete={authMode === "signup" ? "new-password" : "current-password"} value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Senha (mínimo 6 caracteres)" aria-label="Senha" className="min-w-0 rounded-lg border bg-background px-3 py-2.5 text-sm" />
+          <button type="submit" disabled={authBusy} className="rounded-lg bg-foreground px-5 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{authBusy ? "Aguarde..." : authMode === "signup" ? "Criar conta" : "Entrar"}</button>
+        </form>
+      </section>}
+      {user && <p className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">Conectado como <strong>{user.email}</strong>. Seus leads são sincronizados com segurança pela sua conta.</p>}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[{label:"Leads registrados",value:counts.total,desc:"Na sua lista"},{label:"Novos",value:counts.new,desc:"Aguardando contato"},{label:"Contatados",value:counts.contacted,desc:"Abordagem iniciada"},{label:"Interessados",value:counts.interested,desc:"Em negociação"}].map((item) => <div key={item.label} className="rounded-2xl border bg-background p-4 sm:p-5"><p className="text-sm text-muted-foreground">{item.label}</p><p className="mt-2 font-display text-3xl font-bold tabular-nums">{item.value}</p><p className="mt-1 text-xs text-muted-foreground">{item.desc}</p></div>)}
       </section>
@@ -108,10 +240,10 @@ function Prospecting() {
       </section>
       <section className="overflow-hidden rounded-2xl border bg-background">
         <div className="flex flex-col justify-between gap-4 border-b p-5 sm:flex-row sm:items-center sm:p-6"><div><h2 className="font-display text-xl font-bold">Seus leads</h2><p className="mt-1 text-sm text-muted-foreground">Acompanhe o progresso e mantenha seu pipeline organizado.</p></div><div className="flex flex-col gap-2 sm:flex-row"><input aria-label="Buscar leads" value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Buscar negócio..." className="min-w-0 rounded-lg border bg-background px-3 py-2 text-sm"/><select aria-label="Filtrar por status" value={filter} onChange={(e)=>setFilter(e.target.value)} className="rounded-lg border bg-background px-3 py-2 text-sm"><option>Todos</option>{statuses.map((status)=><option key={status}>{status}</option>)}</select></div></div>
-        {filtered.length === 0 ? <div className="px-6 py-14 text-center"><div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-muted text-xl" aria-hidden="true">⌕</div><h3 className="mt-4 font-semibold">{leads.length ? "Nenhum lead encontrado" : "Sua lista começa com uma oportunidade"}</h3><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{leads.length ? "Tente outro termo ou altere o filtro de status." : "Pesquise negócios na sua região e adicione o primeiro estabelecimento para acompanhar os contatos."}</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-5 py-3 font-semibold">Estabelecimento</th><th className="px-5 py-3 font-semibold">Localização</th><th className="px-5 py-3 font-semibold">Contato / site</th><th className="px-5 py-3 font-semibold">Status</th><th className="px-5 py-3 font-semibold">Ação</th></tr></thead><tbody className="divide-y">{filtered.map((lead)=><tr key={lead.id} className="align-top"><td className="px-5 py-4"><p className="font-semibold">{lead.business}</p><p className="mt-1 text-xs text-muted-foreground">{lead.niche}</p>{lead.notes&&<p className="mt-2 max-w-xs text-xs text-muted-foreground">{lead.notes}</p>}</td><td className="px-5 py-4">{lead.city||"—"}</td><td className="px-5 py-4">{lead.contact||"—"}{lead.website&&<a href={lead.website} target="_blank" rel="noreferrer" className="mt-1 block max-w-[200px] truncate text-primary underline underline-offset-2">{lead.website}</a>}</td><td className="px-5 py-4"><select aria-label={`Status de ${lead.business}`} value={lead.status} onChange={(e)=>setLeads((previous)=>previous.map((item)=>item.id===lead.id?{...item,status:e.target.value as LeadStatus}:item))} className="rounded-lg border bg-background px-2 py-2">{statuses.map((status)=><option key={status}>{status}</option>)}</select></td><td className="px-5 py-4"><button onClick={()=>setLeads((previous)=>previous.filter((item)=>item.id!==lead.id))} className="text-xs font-semibold text-destructive underline underline-offset-4">Excluir</button></td></tr>)}</tbody></table></div>}
+        {filtered.length === 0 ? <div className="px-6 py-14 text-center"><div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-muted text-xl" aria-hidden="true">⌕</div><h3 className="mt-4 font-semibold">{leads.length ? "Nenhum lead encontrado" : "Sua lista começa com uma oportunidade"}</h3><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{leads.length ? "Tente outro termo ou altere o filtro de status." : "Pesquise negócios na sua região e adicione o primeiro estabelecimento para acompanhar os contatos."}</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-5 py-3 font-semibold">Estabelecimento</th><th className="px-5 py-3 font-semibold">Localização</th><th className="px-5 py-3 font-semibold">Contato / site</th><th className="px-5 py-3 font-semibold">Status</th><th className="px-5 py-3 font-semibold">Ação</th></tr></thead><tbody className="divide-y">{filtered.map((lead)=><tr key={lead.id} className="align-top"><td className="px-5 py-4"><p className="font-semibold">{lead.business}</p><p className="mt-1 text-xs text-muted-foreground">{lead.niche}</p>{lead.notes&&<p className="mt-2 max-w-xs text-xs text-muted-foreground">{lead.notes}</p>}</td><td className="px-5 py-4">{lead.city||"—"}</td><td className="px-5 py-4">{lead.contact||"—"}{lead.website&&<a href={lead.website} target="_blank" rel="noreferrer" className="mt-1 block max-w-[200px] truncate text-primary underline underline-offset-2">{lead.website}</a>}</td><td className="px-5 py-4"><select aria-label={`Status de ${lead.business}`} value={lead.status} onChange={(e)=>void changeStatus(lead, e.target.value as LeadStatus)} className="rounded-lg border bg-background px-2 py-2">{statuses.map((status)=><option key={status}>{status}</option>)}</select></td><td className="px-5 py-4"><button onClick={()=>void deleteLead(lead)} className="text-xs font-semibold text-destructive underline underline-offset-4">Excluir</button></td></tr>)}</tbody></table></div>}
       </section>
       {notice&&<p role="status" className="text-sm text-muted-foreground">{notice}</p>}
-      <p className="text-xs leading-relaxed text-muted-foreground">Os leads ficam salvos neste navegador, não em uma conta sincronizada. Exporte o CSV para manter uma cópia. Utilize contatos comerciais públicos de forma responsável e respeite a legislação aplicável.</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">{user ? "Seus leads estão vinculados à sua conta. Exporte o CSV para manter uma cópia de segurança." : "Sem entrar na conta, os leads ficam salvos apenas neste navegador. Exporte o CSV para manter uma cópia. Utilize contatos comerciais públicos de forma responsável e respeite a legislação aplicável."}</p>
     </main>
   </div>;
 }
