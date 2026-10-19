@@ -32,6 +32,48 @@ export type Database = {
         }
         Relationships: []
       }
+      prospecting_leads: {
+        Row: {
+          business: string
+          city: string
+          contact: string
+          created_at: string
+          id: string
+          niche: string
+          notes: string
+          status: string
+          updated_at: string
+          user_id: string
+          website: string
+        }
+        Insert: {
+          business: string
+          city?: string
+          contact?: string
+          created_at?: string
+          id?: string
+          niche?: string
+          notes?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+          website?: string
+        }
+        Update: {
+          business?: string
+          city?: string
+          contact?: string
+          created_at?: string
+          id?: string
+          niche?: string
+          notes?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          website?: string
+        }
+        Relationships: []
+      }
       project_versions: {
         Row: {
           created_at: string
