@@ -47,6 +47,7 @@ function Index() {
           <a className="transition hover:text-white" href="#modelos">Modelos</a>
         </nav>
         <div className="flex items-center gap-2 sm:gap-3">
+          <Link to="/dashboard" className="hidden rounded-full px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/5 hover:text-white sm:inline-flex">Dashboard</Link>
           <Link to="/prospecting" className="hidden rounded-full px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/5 hover:text-white sm:inline-flex">Prospecção</Link>
           <button onClick={() => start("branco")} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-[#10101d] transition hover:bg-violet-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-violet-300 sm:px-5">Começar agora <ArrowUpRight size={16} /></button>
         </div>
