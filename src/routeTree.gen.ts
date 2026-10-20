@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as EditorRouteImport } from './routes/editor'
 import { Route as PreviewRouteImport } from './routes/preview'
 import { Route as ProspectingRouteImport } from './routes/prospecting'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,18 +23,21 @@ const IndexRoute = IndexRouteImport.update({
 const EditorRoute = EditorRouteImport.update({ id: '/editor', path: '/editor', getParentRoute: () => rootRouteImport } as any)
 const PreviewRoute = PreviewRouteImport.update({ id: '/preview', path: '/preview', getParentRoute: () => rootRouteImport } as any)
 const ProspectingRoute = ProspectingRouteImport.update({ id: '/prospecting', path: '/prospecting', getParentRoute: () => rootRouteImport } as any)
+const DashboardRoute = DashboardRouteImport.update({ id: '/dashboard', path: '/dashboard', getParentRoute: () => rootRouteImport } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/editor': typeof EditorRoute
   '/preview': typeof PreviewRoute
   '/prospecting': typeof ProspectingRoute
+  '/dashboard': typeof DashboardRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/editor': typeof EditorRoute
   '/preview': typeof PreviewRoute
   '/prospecting': typeof ProspectingRoute
+  '/dashboard': typeof DashboardRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -41,13 +45,14 @@ export interface FileRoutesById {
   '/editor': typeof EditorRoute
   '/preview': typeof PreviewRoute
   '/prospecting': typeof ProspectingRoute
+  '/dashboard': typeof DashboardRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/editor' | '/preview' | '/prospecting'
+  fullPaths: '/' | '/editor' | '/preview' | '/prospecting' | '/dashboard'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/editor' | '/preview' | '/prospecting'
-  id: '__root__' | '/' | '/editor' | '/preview' | '/prospecting'
+  to: '/' | '/editor' | '/preview' | '/prospecting' | '/dashboard'
+  id: '__root__' | '/' | '/editor' | '/preview' | '/prospecting' | '/dashboard'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -55,6 +60,7 @@ export interface RootRouteChildren {
   EditorRoute: typeof EditorRoute
   PreviewRoute: typeof PreviewRoute
   ProspectingRoute: typeof ProspectingRoute
+  DashboardRoute: typeof DashboardRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -69,6 +75,7 @@ declare module '@tanstack/react-router' {
     '/editor': { id: '/editor'; path: '/editor'; fullPath: '/editor'; preLoaderRoute: typeof EditorRouteImport; parentRoute: typeof rootRouteImport }
     '/preview': { id: '/preview'; path: '/preview'; fullPath: '/preview'; preLoaderRoute: typeof PreviewRouteImport; parentRoute: typeof rootRouteImport }
     '/prospecting': { id: '/prospecting'; path: '/prospecting'; fullPath: '/prospecting'; preLoaderRoute: typeof ProspectingRouteImport; parentRoute: typeof rootRouteImport }
+    '/dashboard': { id: '/dashboard'; path: '/dashboard'; fullPath: '/dashboard'; preLoaderRoute: typeof DashboardRouteImport; parentRoute: typeof rootRouteImport }
   }
 }
 
@@ -77,6 +84,7 @@ const rootRouteChildren: RootRouteChildren = {
   EditorRoute: EditorRoute,
   PreviewRoute: PreviewRoute,
   ProspectingRoute: ProspectingRoute,
+  DashboardRoute: DashboardRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
